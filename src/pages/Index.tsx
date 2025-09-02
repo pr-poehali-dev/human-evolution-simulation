@@ -87,8 +87,8 @@ const Index = () => {
           Math.abs(t.x - human.x) < 40 && Math.abs(t.y - human.y) < 40
         );
 
-        // AI Decision making
-        const decision = makeDecision(human, nearbyHumans, nearbyMobs, nearbyTrees);
+        // AI Decision making - pass total population for survival decisions
+        const decision = makeDecision(human, nearbyHumans, nearbyMobs, nearbyTrees, humans.length);
         human.goal = decision;
 
         // Execute decision
@@ -100,12 +100,17 @@ const Index = () => {
               if (knowledgeEvent) addEvent(knowledgeEvent);
               human.knowledge.social += 0.02;
               
-              // Reproduction chance
-              if (human.age! > 18 && partner.age! > 18 && Math.random() < 0.003) {
+              // Enhanced reproduction system - more babies when needed
+              const populationPressure = humans.length < 20 ? 0.01 : humans.length < 40 ? 0.006 : 0.003;
+              const ageBonus = (human.age! > 18 && human.age! < 45) && (partner.age! > 18 && partner.age! < 45) ? 1.3 : 1;
+              const reproductionChance = populationPressure * ageBonus;
+              
+              if (Math.random() < reproductionChance) {
                 const child = createChild(human, partner);
                 newEntities.push(child);
                 human.children = (human.children || 0) + 1;
-                addEvent('👶 Родился новый человек с наследственными знаниями!');
+                partner.children = (partner.children || 0) + 1;
+                addEvent(`👶 Родился новый человек! Население: ${humans.length + 1}`);
               }
             }
             break;
@@ -145,8 +150,19 @@ const Index = () => {
             break;
             
           case 'learn':
-            human.knowledge.science += 0.02;
-            human.knowledge.crafting += 0.01;
+            // Solo learning with gradual improvement
+            human.knowledge.science += 0.03 + (Math.random() * 0.02);
+            human.knowledge.crafting += 0.02 + (Math.random() * 0.01);
+            human.knowledge.survival += 0.015;
+            human.knowledge.social += 0.01;
+            
+            // Chance for breakthrough when learning alone
+            if (Math.random() < 0.02) {
+              const categories = ['science', 'crafting', 'survival', 'social'] as const;
+              const category = categories[Math.floor(Math.random() * categories.length)];
+              human.knowledge[category] += Math.random() * 2;
+              addEvent(`💡 ${human.id} сделал открытие в области ${category}!`);
+            }
             break;
             
           case 'explore':
@@ -164,14 +180,35 @@ const Index = () => {
         human.vx = (human.vx || 0) * 0.98;
         human.vy = (human.vy || 0) * 0.98;
 
-        // Age and death
-        human.age += 0.08;
-        if (human.age > 85 + Math.random() * 20 || human.hp <= 0) {
+        // Age and improved longevity system
+        human.age += 0.05; // Even slower aging
+        
+        // Knowledge extends life - wiser people live longer
+        const totalKnowledge = Object.values(human.knowledge).reduce((sum, val) => sum + val, 0);
+        const knowledgeBonus = Math.min(20, totalKnowledge / 8); // Up to 20 years bonus
+        const populationBonus = humans.length < 15 ? 15 : humans.length < 30 ? 5 : 0;
+        const deathAge = 85 + Math.random() * 20 + knowledgeBonus + populationBonus;
+        const minHp = humans.length < 10 ? -30 : 0; // Can survive longer when population is critical
+        
+        if (human.age > deathAge || human.hp <= minHp) {
           const index = newEntities.indexOf(human);
           if (index > -1) {
+            // Transfer some knowledge to nearby humans before death
+            nearbyHumans.forEach(nearby => {
+              if (nearby.knowledge && human.knowledge) {
+                Object.keys(nearby.knowledge).forEach(key => {
+                  nearby.knowledge![key as keyof Knowledge] += human.knowledge![key as keyof Knowledge] * 0.1;
+                });
+              }
+            });
+            
             newEntities.splice(index, 1);
             setStats(prev => ({ ...prev, totalDeaths: prev.totalDeaths + 1 }));
-            addEvent(`💀 Человек умер в возрасте ${Math.floor(human.age)} лет, оставив знания потомкам`);
+            if (totalKnowledge > 30) {
+              addEvent(`📚 Мудрец ушел в возрасте ${Math.floor(human.age)} лет, передав знания молодым`);
+            } else {
+              addEvent(`💀 Человек умер в возрасте ${Math.floor(human.age)} лет`);
+            }
           }
         }
       });
@@ -218,6 +255,42 @@ const Index = () => {
 
     // Update statistics
     const currentHumans = entities.filter(e => e.type === 'human');
+    
+    // Population emergency system - spawn new humans if critically low
+    if (currentHumans.length < 8 && Math.random() < 0.15) {
+      const emergencyHuman: Entity = {
+        id: `emergency-human-${Date.now()}`,
+        x: (Math.random() - 0.5) * 200,
+        y: (Math.random() - 0.5) * 200,
+        type: 'human',
+        hp: 100,
+        age: Math.random() * 10 + 20,
+        size: Math.random() * 3 + 5,
+        color: '#FF4444',
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: (Math.random() - 0.5) * 1.5,
+        resources: Math.floor(Math.random() * 8) + 3,
+        children: 0,
+        knowledge: {
+          science: Math.random() * 4 + 1,
+          crafting: Math.random() * 4 + 1,
+          combat: Math.random() * 3 + 1,
+          survival: Math.random() * 5 + 2,
+          social: Math.random() * 4 + 1
+        },
+        goal: 'socialize',
+        memory: [],
+        personality: {
+          aggression: Math.random() * 0.6,
+          curiosity: Math.random() * 0.8 + 0.2,
+          social: Math.random() * 0.8 + 0.2
+        }
+      };
+      
+      setEntities(prev => [...prev, emergencyHuman]);
+      addEvent('🚨 Экстренное появление: новый человек присоединился к цивилизации!');
+    }
+    
     if (currentHumans.length > 0) {
       const avgKnowledge = calculateAverageKnowledge(currentHumans);
       const civLevel = Math.floor((avgKnowledge.science + avgKnowledge.crafting + avgKnowledge.social) / 3);
@@ -232,11 +305,20 @@ const Index = () => {
       }));
     }
     
-    // Check for technology discoveries periodically
-    if (stats.time % 50 === 0) {
+    // Check for technology discoveries more frequently
+    if (stats.time % 30 === 0) {
       const { updatedTechnologies, discoveredTech } = checkTechnologyDiscovery(entities, technologies);
       if (discoveredTech) {
-        addEvent(`🎉 Открыта технология: ${discoveredTech.name}!`);
+        addEvent(`🎉 Открыта технология: ${discoveredTech.name}! Цивилизация развивается!`);
+        
+        // Technology discovery boosts all humans' knowledge
+        currentHumans.forEach(human => {
+          if (human.knowledge) {
+            Object.keys(human.knowledge).forEach(key => {
+              human.knowledge![key as keyof Knowledge] += 0.5;
+            });
+          }
+        });
       }
       setTechnologies(updatedTechnologies);
     }

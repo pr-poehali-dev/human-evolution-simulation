@@ -1,43 +1,68 @@
 import { Entity, Knowledge, Technology, Decision, DecisionType } from '@/types/simulation';
 
-// Advanced AI decision making
+// Advanced AI decision making with survival focus
 export const makeDecision = (
   human: Entity, 
   nearbyHumans: Entity[], 
   nearbyMobs: Entity[], 
-  nearbyTrees: Entity[]
+  nearbyTrees: Entity[],
+  totalPopulation: number
 ): DecisionType => {
   const decisions: Decision[] = [];
+  const survivalBonus = totalPopulation < 10 ? 5 : 1; // Boost survival when population is low
   
-  // Social interaction
-  if (nearbyHumans.length > 0 && human.personality!.social > 0.4) {
-    decisions.push({ type: 'socialize', priority: human.personality!.social * 10 });
+  // CRITICAL: Reproduction priority when population is low
+  if (nearbyHumans.length > 0 && human.age! > 16 && human.age! < 50 && totalPopulation < 50) {
+    const reproductiveParter = nearbyHumans.find(h => h.age! > 16 && h.age! < 50);
+    if (reproductiveParter) {
+      decisions.push({ type: 'socialize', priority: 15 * survivalBonus });
+    }
   }
   
-  // Learning from others
-  if (nearbyHumans.length > 0 && human.personality!.curiosity > 0.5) {
-    decisions.push({ type: 'learn', priority: human.personality!.curiosity * 8 });
+  // Enhanced social interaction for knowledge sharing
+  if (nearbyHumans.length > 0) {
+    const socialPriority = human.personality!.social * 8 + (totalPopulation < 20 ? 5 : 0);
+    decisions.push({ type: 'socialize', priority: socialPriority });
   }
   
-  // Resource gathering
-  if ((human.resources || 0) < 15 && nearbyTrees.length > 0) {
-    decisions.push({ type: 'gather', priority: (15 - (human.resources || 0)) * 2 });
+  // Continuous learning - always try to learn
+  if (nearbyHumans.length > 0) {
+    const avgKnowledge = (human.knowledge!.science + human.knowledge!.crafting + human.knowledge!.social) / 3;
+    const learningPriority = human.personality!.curiosity * 6 + (avgKnowledge < 50 ? 8 : 4);
+    decisions.push({ type: 'learn', priority: learningPriority });
   }
   
-  // Combat
-  if (nearbyMobs.length > 0 && human.personality!.aggression > 0.6) {
-    decisions.push({ type: 'fight', priority: human.personality!.aggression * 6 });
+  // Resource gathering - more aggressive when needed
+  const resourceNeed = Math.max(0, 20 - (human.resources || 0));
+  if (resourceNeed > 0 && nearbyTrees.length > 0) {
+    decisions.push({ type: 'gather', priority: resourceNeed * 2.5 * survivalBonus });
   }
   
-  // Building
-  if ((human.resources || 0) > 20 && human.knowledge!.crafting > 10) {
-    decisions.push({ type: 'build', priority: human.knowledge!.crafting / 2 });
+  // Combat - defend civilization
+  if (nearbyMobs.length > 0) {
+    const combatPriority = (human.personality!.aggression * 5) + 
+                          (human.knowledge!.combat * 0.5) + 
+                          (totalPopulation < 15 ? 6 : 2);
+    decisions.push({ type: 'fight', priority: combatPriority });
   }
   
-  // Exploration
-  if (human.personality!.curiosity > 0.3) {
-    decisions.push({ type: 'explore', priority: human.personality!.curiosity * 3 });
+  // Building - invest in future
+  if ((human.resources || 0) > 15 && human.knowledge!.crafting > 5) {
+    const buildingPriority = (human.knowledge!.crafting * 0.8) + 
+                           (totalPopulation > 20 ? 4 : 2);
+    decisions.push({ type: 'build', priority: buildingPriority });
   }
+  
+  // Research - always pursue knowledge
+  const researchPriority = human.personality!.curiosity * 4 + 
+                          (human.age! > 25 ? 3 : 1) + 
+                          (totalPopulation > 10 ? 2 : 0);
+  decisions.push({ type: 'learn', priority: researchPriority });
+  
+  // Exploration - find new opportunities
+  const explorePriority = human.personality!.curiosity * 2 + 
+                         (human.age! < 30 ? 3 : 1);
+  decisions.push({ type: 'explore', priority: explorePriority });
   
   // Choose best decision
   if (decisions.length > 0) {
@@ -45,31 +70,78 @@ export const makeDecision = (
     return decisions[0].type;
   }
   
-  return 'explore';
+  return 'gather'; // Default to survival
 };
 
-// Knowledge sharing system
+// Enhanced knowledge sharing system with breakthroughs
 export const shareKnowledge = (human1: Entity, human2: Entity): string | null => {
   if (!human1.knowledge || !human2.knowledge) return null;
   
   const categories = ['science', 'crafting', 'combat', 'survival', 'social'] as const;
-  const sharedCategory = categories[Math.floor(Math.random() * categories.length)];
+  let sharedKnowledge = false;
+  let eventMessage: string | null = null;
   
-  const avgKnowledge = (human1.knowledge[sharedCategory] + human2.knowledge[sharedCategory]) / 2;
-  const learningRate = 0.1;
+  // Share knowledge in multiple categories
+  categories.forEach(category => {
+    const diff = Math.abs(human1.knowledge![category] - human2.knowledge![category]);
+    
+    // Only share if there's significant difference
+    if (diff > 0.5) {
+      const avgKnowledge = (human1.knowledge![category] + human2.knowledge![category]) / 2;
+      const learningRate = 0.15 + (Math.random() * 0.1); // Variable learning rate
+      
+      // Teacher-student relationship
+      const teacher = human1.knowledge![category] > human2.knowledge![category] ? human1 : human2;
+      const student = teacher === human1 ? human2 : human1;
+      
+      // Teacher gains small boost from teaching
+      teacher.knowledge![category] += 0.03;
+      
+      // Student learns more
+      student.knowledge![category] += (avgKnowledge - student.knowledge![category]) * learningRate;
+      
+      sharedKnowledge = true;
+      
+      // Generate breakthrough chance
+      if (Math.random() < 0.08 && avgKnowledge > 15) {
+        const breakthrough = Math.random() * 2.5;
+        human1.knowledge![category] += breakthrough;
+        human2.knowledge![category] += breakthrough;
+        eventMessage = `🧠 Прорыв в знаниях ${category}! Коллективное открытие!`;
+      }
+    }
+  });
   
-  human1.knowledge[sharedCategory] += (avgKnowledge - human1.knowledge[sharedCategory]) * learningRate;
-  human2.knowledge[sharedCategory] += (avgKnowledge - human2.knowledge[sharedCategory]) * learningRate;
+  // Innovation chance when two knowledgeable people meet
+  const totalKnowledge1 = Object.values(human1.knowledge).reduce((sum, val) => sum + val, 0);
+  const totalKnowledge2 = Object.values(human2.knowledge).reduce((sum, val) => sum + val, 0);
   
-  if (Math.random() < 0.1) {
-    return `Люди поделились знаниями в области ${sharedCategory}`;
+  if (totalKnowledge1 > 30 && totalKnowledge2 > 30 && Math.random() < 0.05) {
+    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+    human1.knowledge[randomCategory] += Math.random() * 3;
+    human2.knowledge[randomCategory] += Math.random() * 3;
+    eventMessage = `💡 Инновация! Два мудреца создали новое знание в ${randomCategory}!`;
   }
   
-  return null;
+  // Passive knowledge gain from just being together
+  categories.forEach(category => {
+    human1.knowledge![category] += 0.01;
+    human2.knowledge![category] += 0.01;
+  });
+  
+  if (sharedKnowledge && Math.random() < 0.2) {
+    return eventMessage || `Обмен знаниями между поколениями`;
+  }
+  
+  return eventMessage;
 };
 
-// Create child with inherited traits
+// Create child with inherited traits and generational improvement
 export const createChild = (parent1: Entity, parent2: Entity): Entity => {
+  const inheritanceBonus = 0.45; // Children inherit 45% of parents' knowledge
+  const generationalImprovement = Math.random() * 0.3; // Random improvement chance
+  const mutationRate = 0.25;
+  
   return {
     id: `human-${Date.now()}-${Math.random()}`,
     x: parent1.x + (Math.random() - 0.5) * 25,
@@ -81,21 +153,21 @@ export const createChild = (parent1: Entity, parent2: Entity): Entity => {
     color: '#FF4444',
     vx: (Math.random() - 0.5) * 1.5,
     vy: (Math.random() - 0.5) * 1.5,
-    resources: 0,
+    resources: 5, // Start with some resources
     children: 0,
     knowledge: {
-      science: (parent1.knowledge!.science + parent2.knowledge!.science) / 2 * 0.1,
-      crafting: (parent1.knowledge!.crafting + parent2.knowledge!.crafting) / 2 * 0.1,
-      combat: (parent1.knowledge!.combat + parent2.knowledge!.combat) / 2 * 0.1,
-      survival: (parent1.knowledge!.survival + parent2.knowledge!.survival) / 2 * 0.1,
-      social: (parent1.knowledge!.social + parent2.knowledge!.social) / 2 * 0.1
+      science: ((parent1.knowledge!.science + parent2.knowledge!.science) / 2) * inheritanceBonus + generationalImprovement,
+      crafting: ((parent1.knowledge!.crafting + parent2.knowledge!.crafting) / 2) * inheritanceBonus + generationalImprovement,
+      combat: ((parent1.knowledge!.combat + parent2.knowledge!.combat) / 2) * inheritanceBonus + generationalImprovement,
+      survival: ((parent1.knowledge!.survival + parent2.knowledge!.survival) / 2) * inheritanceBonus + generationalImprovement,
+      social: ((parent1.knowledge!.social + parent2.knowledge!.social) / 2) * inheritanceBonus + generationalImprovement
     },
-    goal: 'explore',
+    goal: 'learn',
     memory: [],
     personality: {
-      aggression: (parent1.personality!.aggression + parent2.personality!.aggression) / 2 + (Math.random() - 0.5) * 0.2,
-      curiosity: (parent1.personality!.curiosity + parent2.personality!.curiosity) / 2 + (Math.random() - 0.5) * 0.2,
-      social: (parent1.personality!.social + parent2.personality!.social) / 2 + (Math.random() - 0.5) * 0.2
+      aggression: Math.max(0.1, Math.min(0.9, (parent1.personality!.aggression + parent2.personality!.aggression) / 2 + (Math.random() - 0.5) * mutationRate)),
+      curiosity: Math.max(0.4, Math.min(1.0, (parent1.personality!.curiosity + parent2.personality!.curiosity) / 2 + (Math.random() - 0.5) * mutationRate + 0.1)), // More curious
+      social: Math.max(0.3, Math.min(1.0, (parent1.personality!.social + parent2.personality!.social) / 2 + (Math.random() - 0.5) * mutationRate))
     }
   };
 };
@@ -152,8 +224,8 @@ export const checkTechnologyDiscovery = (
 export const initializeEntities = (): Entity[] => {
   const newEntities: Entity[] = [];
   
-  // Generate trees
-  for (let i = 0; i < 80; i++) {
+  // Generate more trees for better resource availability
+  for (let i = 0; i < 120; i++) {
     newEntities.push({
       id: `tree-${i}`,
       x: (Math.random() - 0.5) * 3000,
@@ -186,33 +258,33 @@ export const initializeEntities = (): Entity[] => {
         survival: Math.random() * 3,
         social: Math.random() * 3
       },
-      goal: ['explore', 'gather', 'socialize', 'build', 'learn'][Math.floor(Math.random() * 5)],
+      goal: ['explore', 'gather', 'socialize', 'learn'][Math.floor(Math.random() * 4)], // Remove 'build' from initial goals
       memory: [],
       personality: {
-        aggression: Math.random(),
-        curiosity: Math.random(),
-        social: Math.random()
+        aggression: Math.random() * 0.8 + 0.1, // 0.1-0.9 range
+        curiosity: Math.random() * 0.6 + 0.4, // 0.4-1.0 range (more curious)
+        social: Math.random() * 0.7 + 0.3 // 0.3-1.0 range (more social)
       }
     });
   }
 
-  // Generate mobs with different behaviors
-  for (let i = 0; i < 40; i++) {
-    const isSmart = Math.random() < 0.3;
+  // Generate fewer, weaker mobs initially to help humans survive
+  for (let i = 0; i < 25; i++) {
+    const isSmart = Math.random() < 0.2;
     newEntities.push({
       id: `mob-${i}`,
       x: (Math.random() - 0.5) * 2500,
       y: (Math.random() - 0.5) * 2500,
       type: 'mob',
-      hp: Math.random() * 60 + 30,
-      size: Math.random() * 5 + 3,
+      hp: Math.random() * 40 + 20, // Weaker mobs
+      size: Math.random() * 4 + 2,
       color: isSmart ? '#CCCCCC' : '#FFFFFF',
-      vx: (Math.random() - 0.5) * (isSmart ? 2.5 : 4),
-      vy: (Math.random() - 0.5) * (isSmart ? 2.5 : 4),
+      vx: (Math.random() - 0.5) * (isSmart ? 2 : 3),
+      vy: (Math.random() - 0.5) * (isSmart ? 2 : 3),
       personality: {
-        aggression: isSmart ? Math.random() * 0.7 : Math.random(),
-        curiosity: isSmart ? Math.random() * 0.8 + 0.2 : Math.random() * 0.3,
-        social: Math.random() * 0.4
+        aggression: isSmart ? Math.random() * 0.5 : Math.random() * 0.7, // Less aggressive
+        curiosity: isSmart ? Math.random() * 0.6 + 0.1 : Math.random() * 0.2,
+        social: Math.random() * 0.3
       }
     });
   }

@@ -272,11 +272,11 @@ const Index = () => {
         resources: Math.floor(Math.random() * 8) + 3,
         children: 0,
         knowledge: {
-          science: Math.random() * 4 + 1,
-          crafting: Math.random() * 4 + 1,
-          combat: Math.random() * 3 + 1,
-          survival: Math.random() * 5 + 2,
-          social: Math.random() * 4 + 1
+          science: Math.random() * 5 + 2,
+          crafting: Math.random() * 5 + 2,
+          combat: Math.random() * 4 + 1,
+          survival: Math.random() * 6 + 3,
+          social: Math.random() * 5 + 2
         },
         goal: 'socialize',
         memory: [],
@@ -306,7 +306,7 @@ const Index = () => {
     }
     
     // Check for technology discoveries more frequently
-    if (stats.time % 30 === 0) {
+    if (stats.time % 20 === 0) {
       const { updatedTechnologies, discoveredTech } = checkTechnologyDiscovery(entities, technologies);
       if (discoveredTech) {
         addEvent(`🎉 Открыта технология: ${discoveredTech.name}! Цивилизация развивается!`);
@@ -315,7 +315,7 @@ const Index = () => {
         currentHumans.forEach(human => {
           if (human.knowledge) {
             Object.keys(human.knowledge).forEach(key => {
-              human.knowledge![key as keyof Knowledge] += 0.5;
+              human.knowledge![key as keyof Knowledge] += 1;
             });
           }
         });
